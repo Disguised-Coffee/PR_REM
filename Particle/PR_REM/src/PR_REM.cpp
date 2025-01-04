@@ -7,6 +7,8 @@
 
 // Include Particle Device OS APIs
 #include "Particle.h"
+#include "Arduino.h"
+#include "PhotoResistor.h"
 
 // Let Device OS manage the connection to the Particle Cloud
 SYSTEM_MODE(AUTOMATIC);
@@ -23,17 +25,27 @@ SerialLogHandler logHandler(LOG_LEVEL_INFO);
 // :: code adapted from Mk2 build ::
 #include "Adafruit_DHT_Particle.h"
 
+
+// :: ArduinoJson Config ::
+/**
+ * Fixes error:
+ * 
+ * ../wiring/inc/avr/pgmspace.h:148:29: error: 'const void*' 
+ * is not a pointer-to-object type 
+ *  148 | #define pgm_read_ptr(addr) (*(const void *)(addr))
+ * 
+ * This is supposed to be fixed in the latest version of ArduinoJson,
+ * but some reason the earlier fix is not working.
+ */
+#define ARDUINOJSON_ENABLE_PROGMEM 0
+
+// Does JSON parsing and making easier
+#include "ArduinoJson.h"
+
 #define DHTPIN D8     // what pin we're connected to
 #define DHTTYPE DHT11 // DHT 11
 
 DHT dht(DHTPIN, DHTTYPE);
-
-// These constants won't change:
-const byte lightSenPin = A0; // pin that the sensor is attached to
-
-// variables:
-uint8_t oldLightLvl = 0;  // the sensor value
-uint8_t currLightLvl = 0; // the sensor value
 
 // :: changing vars ::
 // heat index
@@ -45,77 +57,205 @@ float t;
 // humidity
 float h;
 
-// CALEBRATE THESE!! (for proper values)
-uint16_t maxVal = 975; // the sensor value
-uint16_t minVal = 54;  // the sensor value
+PhotoResistor photoResistor(A0);
 
 // float datatype takes same address as float
-union floatToBytes {
-  
-    char charBuffer[4]; // 8 * 4 = 32 bytes
-    float floatingBuffer;
-  
+// (purpose of union is to share same memory location)
+union floatToBytes
+{
+  char charBuffer[4]; // 8 * 4 = 32 bytes
+  float floatingBuffer;
 } converter;
 
-void sendData()
+char *convertToByte(float value)
 {
-  Wire.beginTransmission(4); // transmit to device #4
-  Wire.write(currLightLvl);
+  converter.floatingBuffer = value;
+  return converter.charBuffer;
+}
 
-  // transfer heat index
-  converter.floatingBuffer = hi;
-  Wire.write(converter.charBuffer);
+// this data will be sent to the peripheral board over I2C
+char incomingData[256];
 
-  // dew point
-  converter.floatingBuffer = dp;
-  Wire.write(converter.charBuffer);
-  
-  // temp (celsius)
-  converter.floatingBuffer = t;
-  Wire.write(converter.charBuffer);
+// ::: Send Env Information :::
+char buffer[256];
+StaticJsonDocument<256> doc;
 
-  // dew point
-  converter.floatingBuffer = h;
-  Wire.write(converter.charBuffer);
-
-  byte err = Wire.endTransmission(); // stop transmitting
-
+/**
+ * Handle incoming messages from the Particle Cloud
+ */
+void msgHandler(const char *event, const char *data)
+{
+  DeserializationError err = deserializeJson(doc, data);
   if (err)
   {
-    // No Serial! Use log instead for debugging messages in the cloud!
+    Log.error("Failed to parse incoming data");
+    return;
+  }
+
+  // Get the JsonArray from the JsonDocument
+  JsonArray array = doc.as<JsonArray>();
+
+  // array should have 1 element of "msg"
+  if (array.size() != 1)
+  {
+    Log.error("Invalid message sent: array size too long");
+    return;
+  }
+
+  /**
+   * There's an issue here. []
+   * 
+   * Doing this does not work:
+   * array[0]["msg"].is<char *>())
+   * 
+   * >:C
+   */
+  const char *msg = array[0]["msg"];
+  if (msg == NULL)
+  {
+    Log.error("Invalid message sent: No msg key");
+    return;
+  }
+  else if(strlen(msg) > 255)
+  {
+    Log.error("Invalid message sent: Message too long");
+    return;
+  }
+  else
+  {
+    // copy the message from integration
+    strcpy(incomingData, msg);
+  }
+}
+
+/**
+ * Send data to the peripheral board via I2c
+ *
+ * byte startingByte ~
+ *    0x01 --> MSG
+ *    0x02 --> sensor data
+ */
+void sendDataOverI2C(byte startingByte)
+{
+  Wire.beginTransmission(4); // transmit to device #4
+
+  Wire.write(startingByte);
+  switch (startingByte)
+  {
+  case 0x01:
+    Wire.write(incomingData);
+    break;
+
+  case 0x02:
+    Wire.write(photoResistor.getPhotoresistorValue());
+
+    // transfer heat index
+    Wire.write(convertToByte(hi));
+
+    // dew point
+    Wire.write(convertToByte(dp));
+
+    // temp (celsius)
+    Wire.write(convertToByte(t));
+
+    // humdity
+    Wire.write(convertToByte(h));
+    break;
+
+  default:
+    Log.error("Invalid starting byte");
+    break;
+  }
+  byte err = Wire.endTransmission(); // stop transmitting
+
+  // check for errors in I2C transmission
+  // btw, Log class is like Serial, but Cloud based.
+  if (err)
+  {
     Log.info("Error when sending values");
     if (err == 5)
       Log.warn("It was a timeout");
   }
 }
 
-void setup()
+/**
+ * Grab variables, and send them.
+ */
+void sendDataToIntegration()
 {
-  // inits.
-  Wire.begin();
-  dht.begin();
+  doc.clear();
+
+  Log.info("Sending data...");
+  doc["lightLvl"] = String(photoResistor.getPhotoresistorValue());
+  doc["temp"] = String(t);
+  doc["humid"] = String(h);
+  doc["dew"] = String(dp);
+  doc["heatIn"] = String(hi);
+
+  serializeJson(doc, buffer);
+  Particle.publish("envInfo", buffer);
 }
 
-void loop()
+byte updateSensors()
 {
-  // read the sensor:
-  // Note [] This needs a filter.
-  currLightLvl = map(analogRead(lightSenPin), minVal, maxVal, 0, 254);
   hi = dht.getHeatIndex();
   t = dht.getTempCelcius();
 
   if (isnan(hi) || isnan(t))
   {
-    Log.warn("Failed to read from DHT sensor!");
-    return;
+    return 0x01;
   }
   else
   {
     dp = dht.getDewPoint();
     h = dht.getHumidity();
-    
+    return 0x00;
   }
-  // send data regardless for now.
-  sendData();
+}
+
+// Prevents data from being sent if sensor error occurs
+byte sensorError;
+
+/**
+ * Sends data to the peripheral board
+ * and Particle Cloud
+ */
+void updateData()
+{
+  if (sensorError)
+  {
+    Log.warn("Failed to read from DHT sensor");
+    return;
+  }
+  else
+  {
+    sendDataToIntegration();
+    sendDataOverI2C(0x02);
+  }
+}
+
+// allows for data to be sent every 5 seconds
+Timer timer(5000, updateData);
+
+void setup()
+{
+  // inits.
+  Wire.begin();
+  dht.begin();
+
+  // [] add interrupt to send data via integration
+  Particle.subscribe("getMsg", msgHandler);
+  timer.start();
+}
+
+void loop()
+{
+  // update sensors
+  sensorError = updateSensors();
+  if (sensorError)
+  {
+    Log.warn("Failed to read from DHT sensor");
+    return;
+  }
   delay(2000);
 }
