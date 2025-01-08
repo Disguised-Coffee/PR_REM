@@ -19,5 +19,9 @@ Project Room Environment Module ***(PR_REM)*** is a Arduino-based project meant 
 ## 🚀 Software Stack
 
 - 🔷 **Particle** ~ IoT PaaS that handles internet interactions such as sending data to 3rd party databases
-- 📄 **Google Sheets** ~ Google's spreadsheet platform, used to place data (in other words, temporary database)
+- 📄 **Google Sheets** ~ Google's spreadsheet platform, used to place data (in other words, temporary database). Uses ___Google Apps Scripts___ for handling data posts.
 - 🟩 **Arduino** ~ Popular, public domain microcontroller environment to prototype electronic designs easily
+
+## 🔧 Running the Project
+
+> Dedicated Instructables page will be made a few weeks after project conclusion
