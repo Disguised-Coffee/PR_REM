@@ -2,11 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* import font libs */
+@import url('https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;700&display=swap');
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --primary: #9AF6BF;
+  --containerBackground: #D9D9D9;
+  --containerShadow: #959595;
+  --containerForeground: #B0B0B0;
 }
-
+/* do this later */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #1b012d;
@@ -18,4 +26,24 @@ body {
   color: var(--foreground);
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+.text-shadow {
+  text-shadow: 
+    1px 1px 0 #000, 
+    -1px -1px 0 #000, 
+    1px -1px 0 #000, 
+    -1px 1px 0 #000,
+    1px 0 0 #000,
+    -1px 0 0 #000,
+    0 1px 0 #000,
+    0 -1px 0 #000;
+}
+
+.custom-border{
+  border-radius: 0 0 1.5rem 1.5rem;
+}
+
+.custom-shadow{
+  box-shadow: -8px 8px 0px 2px var(--containerShadow);
 }

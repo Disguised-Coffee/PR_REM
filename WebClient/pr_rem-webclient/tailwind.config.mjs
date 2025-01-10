@@ -1,3 +1,5 @@
+import { Ubuntu } from 'next/font/google';
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -10,6 +12,14 @@ export default {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
+        primary: "var(--primary)",
+        cbackground: "var(--containerBackground)",
+        cShadow: "var(--containerShadow)",
+        cForeground: "var(--containerForeground)",
+      },
+      fontFamily:{
+        'IBM': 'IBM Plex Sans',
+        'Ubuntu' : 'Ubuntu'
       },
     },
   },
