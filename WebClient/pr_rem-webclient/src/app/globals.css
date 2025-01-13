@@ -13,6 +13,8 @@
   --containerBackground: #D9D9D9;
   --containerShadow: #959595;
   --containerForeground: #B0B0B0;
+
+  overscroll-behavior-x: none;
 }
 /* do this later */
 @media (prefers-color-scheme: dark) {
@@ -46,4 +48,8 @@ body {
 
 .custom-shadow{
   box-shadow: -8px 8px 0px 2px var(--containerShadow);
+}
+
+.grid{
+  border: 1px solid #ddd;
 }
